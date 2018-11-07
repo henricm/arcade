@@ -365,6 +365,12 @@ namespace Microsoft.Cci.Extensions
             return types;
         }
 
+        public static IEnumerable<INamespaceAliasForType> GetForwardedTypes(this IAssembly assembly) {
+            return assembly
+                .GetAllNamespaces()
+                .SelectMany(x => x.Members.OfType<INamespaceAliasForType>());
+        }
+
         public static IEnumerable<ITypeDefinitionMember> GetAllMembers(this ITypeDefinition type)
         {
             foreach (var m in type.Members)

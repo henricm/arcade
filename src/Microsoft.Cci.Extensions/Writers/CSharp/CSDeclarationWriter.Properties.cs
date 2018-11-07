@@ -71,7 +71,7 @@ namespace Microsoft.Cci.Writers.CSharp
                     WriteKeyword("readonly");
             }
 
-            WriteTypeName(property.Type, isDynamic: IsDynamic(property.Attributes));
+            WriteTypeName(property.Type, attributes: property.Attributes);
 
             if (property.IsExplicitInterfaceProperty() && _forCompilationIncludeGlobalprefix)
                 Write("global::");
@@ -115,6 +115,16 @@ namespace Microsoft.Cci.Writers.CSharp
             WriteSpace();
             WriteAttributes(accessor.Attributes, writeInline: true);
             WriteAttributes(accessor.SecurityAttributes, writeInline: true);
+
+            if (accessor.ReturnValueIsMarshalledExplicitly)
+                WriteExplicitMarshalling(accessor.ReturnValueMarshallingInformation, writeInline: true, prefix: "return: ");
+
+            foreach (var p in accessor.Parameters)
+            {
+                if (p.IsMarshalledExplicitly)
+                    WriteExplicitMarshalling(p.MarshallingInformation, writeInline: true, prefix: "param: ");
+            }
+
             // If the accessor is an internal call (or a PInvoke) we should put those attributes here as well
 
             WriteMethodPseudoCustomAttributes(accessor);

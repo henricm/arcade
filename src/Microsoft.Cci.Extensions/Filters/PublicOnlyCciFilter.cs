@@ -17,6 +17,28 @@ namespace Microsoft.Cci.Filters
         public bool IncludeForwardedTypes { get; set; }
 
         public bool ExcludeAttributes { get; set; }
+ 
+        bool IsMonoAttributeType(ITypeDefinition type)
+        {
+            string name = type?.FullName();
+            switch (name)
+            {
+                case "System.MonoTODOAttribute":
+                    return true;
+                case "System.MonoDocumentationNoteAttribute":
+                    return true;
+                case "System.MonoExtensionAttribute":
+                    return true;
+                case "System.MonoInternalNoteAttribute":
+                    return true;
+                case "System.MonoLimitationAttribute":
+                    return true;
+                case "System.MonoNotSupportedAttribute":
+                    return true;
+                default:
+                    return false;
+            }
+        }
 
         public virtual bool Include(INamespaceDefinition ns)
         {
@@ -28,6 +50,8 @@ namespace Microsoft.Cci.Filters
         {
             if (type == null || Dummy.Type == type)
                 return false;
+            if (IsMonoAttributeType(type))
+                return true;
             return type.IsVisibleOutsideAssembly();
         }
 
@@ -36,7 +60,7 @@ namespace Microsoft.Cci.Filters
             if (member == null)
                 return false;
 
-            if (!member.ContainingTypeDefinition.IsVisibleOutsideAssembly())
+            if (!member.ContainingTypeDefinition.IsVisibleOutsideAssembly() && !IsMonoAttributeType(member.ContainingTypeDefinition))
                 return false;
 
             switch (member.Visibility)
@@ -60,6 +84,9 @@ namespace Microsoft.Cci.Filters
 
         public virtual bool Include(ICustomAttribute attribute)
         {
+            if (IsMonoAttributeType(attribute.Type?.ResolvedType))
+                return true;
+
             if (this.ExcludeAttributes)
                 return false;
 
@@ -68,18 +95,31 @@ namespace Microsoft.Cci.Filters
             if (attributeDef != null && !attributeDef.IsVisibleOutsideAssembly())
                 return false;
 
-            // Ignore attributes with typeof argument of a type invisible outside the assembly
-            foreach(var arg in attribute.Arguments.OfType<IMetadataTypeOf>())
+            // Ignore attributes with typeof argument of a type invisible outside the assembly, 
+            // except for cases where the typeof argument can be replaced by a string argument 
+            foreach (var arg in attribute.Arguments.OfType<IMetadataTypeOf>())
             {
                 var typeDef = arg.TypeToGet.GetDefinitionOrNull();
                 if (typeDef == null)
                     continue;
 
-                if (!typeDef.IsVisibleOutsideAssembly())
+                if (!typeDef.IsVisibleOutsideAssembly() && !IsAttributeWithTypeofParameterReplacableByString(attribute))
                     return false;
             }
 
             return true;
+        }
+        private static bool IsAttributeWithTypeofParameterReplacableByString(ICustomAttribute attribute) {
+            string typeName = attribute.FullName();
+
+            switch (typeName)
+            {
+                case "System.Diagnostics.DebuggerTypeProxyAttribute": return true;
+                case "System.ComponentModel.TypeConverterAttribute": return true;
+                case "System.ComponentModel.TypeDescriptionProviderAttribute": return true;
+                case "System.ComponentModel.InstallerTypeAttribute": return true;
+            }
+            return false;
         }
     }
 }

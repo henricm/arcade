@@ -25,6 +25,9 @@ namespace Microsoft.Cci.Writers.CSharp
                 WriteFakeAttribute("System.NonSerializedAttribute");
             }
 
+            if (field.IsMarshalledExplicitly)
+                WriteExplicitMarshalling(field.MarshallingInformation, writeInline: false);
+
             if (!field.ContainingTypeDefinition.IsEnum)
             {
                 WriteVisibility(field.Visibility);
@@ -89,7 +92,7 @@ namespace Microsoft.Cci.Writers.CSharp
             }
         }
     }
-
+ 
     public class DummyPrivateField : IFieldDefinition
     {
         private ITypeDefinition _parentType;
@@ -115,7 +118,7 @@ namespace Microsoft.Cci.Writers.CSharp
 
         public bool IsMapped { get { throw new System.NotImplementedException(); } }
 
-        public bool IsMarshalledExplicitly { get { throw new System.NotImplementedException(); } }
+        public bool IsMarshalledExplicitly => false;
 
         public bool IsNotSerialized => false;
 

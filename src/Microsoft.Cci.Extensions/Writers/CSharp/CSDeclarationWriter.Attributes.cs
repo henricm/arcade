@@ -111,6 +111,10 @@ namespace Microsoft.Cci.Writers.CSharp
 
             attributes = attributes.OrderBy(a => a, new AttributeComparer(_filter, _forCompilation));
 
+            // MONO HACK, don't upstream
+            attributes = attributes.Except(attributes.Where(x => x.Type.FullName() == "System.Runtime.CompilerServices.ReferenceAssemblyAttribute").Skip(1));
+            //
+
             bool first = true;
             WriteSymbol("[");
 
@@ -226,10 +230,19 @@ namespace Microsoft.Cci.Writers.CSharp
             IMetadataTypeOf type = expression as IMetadataTypeOf;
             if (type != null)
             {
-                WriteKeyword("typeof", noSpace: true);
-                WriteSymbol("(");
-                WriteTypeName(type.TypeToGet, noSpace: true, omitGenericTypeList: true);
-                WriteSymbol(")");
+                if (type.TypeToGet.GetDefinitionOrNull()?.IsVisibleOutsideAssembly() == false)
+                {
+                    WriteSymbol("\"");
+                    WriteTypeName(type.TypeToGet, noSpace: true);
+                    WriteSymbol("\"");
+                }
+                else
+                {
+                    WriteKeyword("typeof", noSpace: true);
+                    WriteSymbol("(");
+                    WriteTypeName(type.TypeToGet, noSpace: true);
+                    WriteSymbol(")");
+                }
                 return;
             }
 
@@ -401,14 +414,25 @@ namespace Microsoft.Cci.Writers.CSharp
             return false;
         }
 
-        private static bool IsDynamic(IEnumerable<ICustomAttribute> attributes)
-        {
+        private static bool IsDynamic(IEnumerable<ICustomAttribute> attributes) {
+            ICustomAttribute temp;
+            return IsDynamic(attributes, out temp);
+        }
+
+        private static bool IsDynamic(IEnumerable<ICustomAttribute> attributes, out ICustomAttribute dynamicAttribute) {
+            dynamicAttribute = null;
+
+            if (attributes == null)
+                return false;
+
             foreach (var attribute in attributes)
             {
                 if (attribute.Type.AreEquivalent("System.Runtime.CompilerServices.DynamicAttribute"))
+                {
+                    dynamicAttribute = attribute;
                     return true;
+                }
             }
-
             return false;
         }
 

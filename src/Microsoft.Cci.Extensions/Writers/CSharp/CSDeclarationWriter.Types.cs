@@ -21,7 +21,7 @@ namespace Microsoft.Cci.Writers.CSharp
             WriteAttributes(type.SecurityAttributes);
 
             //TODO: We should likely add support for the SerializableAttribute something like:
-            // if (type.IsSerializable) WriteFakeAttribute("System.Serializable");
+            if (type.IsSerializable) WriteFakeAttribute("System.SerializableAttribute");
             // But we need also consider if this attribute is filtered out or not but I guess
             // we have the same problem with all the fake attributes at this point.
 

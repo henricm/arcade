@@ -20,12 +20,14 @@ namespace Microsoft.Cci.Writers
         private readonly IStyleSyntaxWriter _styleWriter;
         private readonly CSDeclarationWriter _declarationWriter;
         private readonly bool _writeAssemblyAttributes;
+        private readonly bool _writeAssemblyVersion;
+        private readonly bool _writeTypeForwardedTo;
         private readonly bool _apiOnly;
         private readonly ICciFilter _cciFilter;
 
         private bool _firstMemberGroup;
 
-        public CSharpWriter(ISyntaxWriter writer, ICciFilter filter, bool apiOnly, bool writeAssemblyAttributes = false)
+        public CSharpWriter(ISyntaxWriter writer, ICciFilter filter, bool apiOnly, bool writeAssemblyAttributes = false, bool writeAssemblyVersion = false, bool writeTypeForwardedTo = false)
             : base(filter)
         {
             _syntaxWriter = writer;
@@ -34,6 +36,8 @@ namespace Microsoft.Cci.Writers
             _cciFilter = filter;
             _declarationWriter = new CSDeclarationWriter(_syntaxWriter, filter, !apiOnly);
             _writeAssemblyAttributes = writeAssemblyAttributes;
+            _writeAssemblyVersion = writeAssemblyVersion;
+            _writeTypeForwardedTo = writeTypeForwardedTo;
         }
 
         public ISyntaxWriter SyntaxWriter { get { return _syntaxWriter; } }
@@ -76,9 +80,19 @@ namespace Microsoft.Cci.Writers
 
         public override void Visit(IAssembly assembly)
         {
+            if (_writeAssemblyVersion)
+            {
+                _declarationWriter.WriteAssemblyVersion(assembly);
+            }
+
             if (_writeAssemblyAttributes)
             {
                 _declarationWriter.WriteDeclaration(assembly);
+            }
+
+            if (_writeTypeForwardedTo)
+            {
+                _declarationWriter.WriteTypeForwardedTo(assembly);
             }
 
             base.Visit(assembly);

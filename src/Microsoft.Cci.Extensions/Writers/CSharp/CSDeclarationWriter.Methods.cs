@@ -32,6 +32,9 @@ namespace Microsoft.Cci.Writers.CSharp
                 return;
             }
 
+            if (method.ReturnValueIsMarshalledExplicitly)
+                WriteExplicitMarshalling(method.ReturnValueMarshallingInformation, writeInline: false, prefix: "return: ");
+
             string name = method.GetMethodName();
 
             if (!method.ContainingTypeDefinition.IsInterface)
@@ -53,11 +56,11 @@ namespace Microsoft.Cci.Writers.CSharp
             WriteEmptyBody();
         }
 
-        private void WriteTypeName(ITypeReference type, ITypeReference containingType, bool isDynamic = false)
+        private void WriteTypeName(ITypeReference type, ITypeReference containingType, IEnumerable<ICustomAttribute> attributes)
         {
             var useKeywords = containingType.GetTypeName() != type.GetTypeName();
 
-            WriteTypeName(type, isDynamic: isDynamic, useTypeKeywords: useKeywords);
+            WriteTypeName(type, attributes: attributes, useTypeKeywords: useKeywords);
         }
 
         private void WriteMethodDefinitionSignature(IMethodDefinition method, string name)
@@ -77,7 +80,7 @@ namespace Microsoft.Cci.Writers.CSharp
                 }
 
                 // We are ignoring custom modifiers right now, we might need to add them later.
-                WriteTypeName(method.Type, method.ContainingType, isDynamic: IsDynamic(method.ReturnValueAttributes));
+                WriteTypeName(method.Type, method.ContainingType, attributes: method.ReturnValueAttributes);
             }
 
             if (method.IsExplicitInterfaceMethod() && _forCompilationIncludeGlobalprefix)
@@ -89,7 +92,7 @@ namespace Microsoft.Cci.Writers.CSharp
             {
                 WriteSpace();
 
-                WriteTypeName(method.Type, method.ContainingType);
+                WriteTypeName(method.Type, method.ContainingType, attributes: null);
             }
 
             Contract.Assert(!(method is IGenericMethodInstance), "Currently don't support generic method instances");
@@ -136,15 +139,21 @@ namespace Microsoft.Cci.Writers.CSharp
 
             if (parameter.IsOut && !parameter.IsIn && parameter.IsByReference)
             {
+                if (parameter.IsMarshalledExplicitly)
+                    WriteExplicitMarshalling(parameter.MarshallingInformation, writeInline: true);
+
                 WriteKeyword("out");
             }
             else
             {
                 // For In/Out we should not emit them until we find a scenario that is needs thems.
-                //if (parameter.IsIn)
-                //   WriteFakeAttribute("System.Runtime.InteropServices.In", writeInline: true);
-                //if (parameter.IsOut)
-                //    WriteFakeAttribute("System.Runtime.InteropServices.Out", writeInline: true);
+                if (parameter.IsIn)
+                    WriteFakeAttribute("System.Runtime.InteropServices.In", writeInline: true);
+                if (parameter.IsOut)
+                    WriteFakeAttribute("System.Runtime.InteropServices.Out", writeInline: true);
+                if (parameter.IsMarshalledExplicitly)
+                    WriteExplicitMarshalling(parameter.MarshallingInformation, writeInline: true);
+ 
                 if (parameter.IsByReference)
                 {
                     if (parameter.Attributes.HasIsReadOnlyAttribute())
@@ -158,13 +167,22 @@ namespace Microsoft.Cci.Writers.CSharp
                 }
             }
 
-            WriteTypeName(parameter.Type, containingType, isDynamic: IsDynamic(parameter.Attributes));
+            WriteTypeName(parameter.Type, containingType, attributes: parameter.Attributes);
             WriteIdentifier(parameter.Name);
             if (parameter.IsOptional && parameter.HasDefaultValue)
             {
                 WriteSymbol(" = ");
                 WriteMetadataConstant(parameter.DefaultValue, parameter.Type);
             }
+        }
+
+        private void WriteExplicitMarshalling(IMarshallingInformation marshallingInfo, bool writeInline, string prefix = "") {
+            string type = string.Format("System.Runtime.InteropServices.UnmanagedType.{0}", marshallingInfo.UnmanagedType);
+
+            if (marshallingInfo.CustomMarshaller is Dummy)
+                WriteFakeAttribute(prefix + "System.Runtime.InteropServices.MarshalAs", writeInline, type);
+            else
+                WriteFakeAttribute(prefix + "System.Runtime.InteropServices.MarshalAs", writeInline, type, string.Format("MarshalType = \"{0}\"", TypeHelper.GetTypeName(marshallingInfo.CustomMarshaller)));
         }
 
         private void WriteInterfaceMethodModifiers(IMethodDefinition method)
@@ -218,6 +236,8 @@ namespace Microsoft.Cci.Writers.CSharp
             // Write Dummy Body
             WriteSpace();
             WriteSymbol("{", true);
+
+            WriteOutParameterInitializations(method);
 
             if (_platformNotSupportedExceptionMessage != null && !method.IsDispose())
             {

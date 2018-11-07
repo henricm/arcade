@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using Microsoft.Cci.Extensions;
@@ -135,10 +136,29 @@ namespace Microsoft.Cci.Writers.CSharp
             WriteSymbol("]");
         }
 
+        public void WriteAssemblyVersion(IAssembly assembly) {
+            _writer.Write(String.Format("[assembly:System.Reflection.AssemblyVersionAttribute(\"{0}\")]", assembly.Version));
+            _writer.WriteLine();
+        }
         public void WriteAssemblyDeclaration(IAssembly assembly)
         {
             WriteAttributes(assembly.Attributes, prefix: "assembly");
             WriteAttributes(assembly.SecurityAttributes, prefix: "assembly");
+        }
+
+        public void WriteTypeForwardedTo(IAssembly assembly)
+        {
+            var forwardedTypeNames = assembly
+                .GetForwardedTypes()
+                .Where(t => !(t.AliasedType is INestedTypeDefinition || t.AliasedType is Dummy))
+                .Select(t => TypeHelper.GetTypeName(t.AliasedType, NameFormattingOptions.TypeParameters | NameFormattingOptions.EmptyTypeParameterList | NameFormattingOptions.UseTypeKeywords))
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var typeName in forwardedTypeNames)
+            {
+                _writer.Write(String.Format("[assembly:System.Runtime.CompilerServices.TypeForwardedToAttribute(typeof({0}))]", typeName));
+                _writer.WriteLine();
+            }
         }
 
         public void WriteMemberDeclaration(ITypeDefinitionMember member)
@@ -223,15 +243,47 @@ namespace Microsoft.Cci.Writers.CSharp
             _writer.Write(literal);
         }
 
-        private void WriteTypeName(ITypeReference type, bool noSpace = false, bool isDynamic = false, bool useTypeKeywords = true, bool omitGenericTypeList = false)
-        {
-            if (isDynamic)
+        private void WriteTypeName(ITypeReference type, bool noSpace = false, bool useTypeKeywords = true, IEnumerable<ICustomAttribute> attributes = null, int typeIndex = 0, bool omitTypeArguments = false, bool omitGenericTypeList = false) {
+            ICustomAttribute dynamicAttribute;
+            if (attributes != null && IsDynamic(attributes, out dynamicAttribute))
             {
-                WriteKeyword("dynamic", noSpace: noSpace);
-                return;
+                if (dynamicAttribute.Arguments.Count() == 0)
+                {
+                    WriteKeyword("dynamic", noSpace: noSpace);
+                    return;
+                }
+
+                var array = (IMetadataCreateArray)dynamicAttribute.Arguments.ElementAt(0);
+                var hasDynamicEntry = ((bool)((IMetadataConstant)array.Initializers.ElementAt(typeIndex)).Value == true);
+
+                if (hasDynamicEntry)
+                {
+                    WriteKeyword("dynamic", noSpace: noSpace);
+                    return;
+                }
+
+                if (type is IGenericTypeInstanceReference)
+                {
+                    WriteTypeName(type, noSpace: true, omitTypeArguments: true);
+                    typeIndex++;
+                    _writer.WriteSymbol("<");
+
+                    var argumentCount = ((IGenericTypeInstanceReference)type).GenericArguments.Count();
+                    foreach (var t in ((IGenericTypeInstanceReference)type).GenericArguments)
+                    {
+                        WriteTypeName(t, noSpace: true, useTypeKeywords: useTypeKeywords, attributes: attributes, typeIndex: typeIndex);
+                        argumentCount--;
+                        typeIndex++;
+                        if (argumentCount > 0)
+                            _writer.WriteSymbol(",");
+                    }
+                    _writer.WriteSymbol(">");
+                    if (!noSpace) WriteSpace();
+                    return;
+                }
             }
 
-            NameFormattingOptions namingOptions = NameFormattingOptions.TypeParameters;
+            NameFormattingOptions namingOptions = omitTypeArguments ? NameFormattingOptions.OmitTypeArguments : NameFormattingOptions.TypeParameters;
 
             if (useTypeKeywords)
                 namingOptions |= NameFormattingOptions.UseTypeKeywords;
