@@ -69,7 +69,7 @@ namespace Microsoft.Cci.Writers.CSharp
                     WriteSymbol("=", true);
                     if (field.Type.IsEnum)
                     {
-                        WriteEnumValue(field.Constant, field.Type);
+                        WriteFieldDefinitionValue(field);
                     }
                     else
                     {
@@ -90,6 +90,31 @@ namespace Microsoft.Cci.Writers.CSharp
                 }
                 WriteSymbol(",");
             }
+        }
+
+        private void WriteFieldDefinitionValue(IFieldDefinition field) {
+            var resolvedType = field.Type.ResolvedType;
+            if (resolvedType != null)
+            {
+                foreach (var enumField in resolvedType.Fields)
+                {
+                    var enumFieldValue = enumField?.Constant?.Value;
+                    if (enumFieldValue != null && enumFieldValue.Equals(field.Constant.Value))
+                    {
+                        WriteTypeName(field.Type, noSpace: true);
+                        WriteSymbol(".");
+                        WriteIdentifier(enumField.Name);
+                        return;
+                    }
+                }
+            }
+
+            // couldn't find a symbol for enum, just cast it
+            WriteSymbol("(");
+            WriteTypeName(field.Type, noSpace: true);
+            WriteSymbol(")");
+            WriteMetadataConstant(field.Constant);
+
         }
     }
  

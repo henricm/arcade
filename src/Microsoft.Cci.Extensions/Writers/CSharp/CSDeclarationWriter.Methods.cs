@@ -171,7 +171,7 @@ namespace Microsoft.Cci.Writers.CSharp
             WriteIdentifier(parameter.Name);
             if (parameter.IsOptional && parameter.HasDefaultValue)
             {
-                WriteSymbol(" = ");
+                WriteSymbol("=");
                 WriteMetadataConstant(parameter.DefaultValue, parameter.Type);
             }
         }
@@ -258,12 +258,33 @@ namespace Microsoft.Cci.Writers.CSharp
 
                  Write(");");
             }
-            else if (NeedsMethodBodyForCompilation(method))
+            else if (method.ContainingTypeDefinition.IsValueType && method.IsConstructor)
             {
-                Write("throw null; ");
+                // Structs cannot have empty constructors so we need to output this dummy body
+                Write("throw null;");
+            }
+            else if (!TypeHelper.TypesAreEquivalent(method.Type, method.ContainingTypeDefinition.PlatformType.SystemVoid))
+            {
+                WriteKeyword("throw null;");
             }
 
             WriteSymbol("}");
+        }
+
+        private void WriteOutParameterInitializations(IMethodDefinition method) {
+
+            if (!_forCompilation)
+                return;
+
+            var outParams = method.Parameters.Where(p => p.IsOut);
+            foreach (var param in outParams)
+            {
+                WriteIdentifier(param.Name);
+                WriteSpace();
+                WriteSymbol("=", true);
+                WriteDefaultOf(param.Type);
+                WriteSymbol(";", true);
+            }
         }
 
         private bool NeedsMethodBodyForCompilation(IMethodDefinition method)
